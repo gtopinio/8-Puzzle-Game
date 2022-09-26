@@ -1,12 +1,15 @@
 package puzzle;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Formatter;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -18,12 +21,14 @@ import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.control.Button;
 import javafx.scene.control.ChoiceBox;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.GridPane;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 public class GameBoard {
@@ -32,6 +37,7 @@ public class GameBoard {
 	private Stage stage;
 	private Group root;
 	private Canvas canvas;
+    private String filePath;
 
     private Text win; // win prompt if puzzle is solvable and player got the correct answer
     private Text sol;
@@ -104,14 +110,22 @@ public class GameBoard {
         
     }
 
+    // sets the tiles unclickable if user opts for solution
     void setNoLongerClickable(){
         this.noLongerClickable = true;
     }
 
+    // removes the win prompt and it's used whenever the current board doesn't match the solution board
     void removeWinPrompt(){
         this.root.getChildren().remove(this.win);
     }
 
+    // sets the file path of the selected input file
+    private void setFilePath(String path){
+        this.filePath = path;
+    }
+
+    // sets the solution button
     private void setSolBtn(){
         Font btnFont = Font.font("Tw Cen MT",FontWeight.NORMAL,20);
         // Adding a solution button
@@ -120,23 +134,39 @@ public class GameBoard {
         this.addEventHandler(solutionBtn);
     }
 
+    // removes the solution button
     private void removeSolutionBtn(){
         this.root.getChildren().remove(this.solutionBtn);
     }
 
+    // clears the root node of the scene
+    private void clearRoot(){
+        this.root.getChildren().clear();
+    }
+
+    // method to display the solution and path cost on screen
     private void setSolutionPrompt(){
-        Font promptFont = Font.font("Tw Cen MT",FontWeight.NORMAL,25);
+        Font promptFont = Font.font("Tw Cen MT",FontWeight.NORMAL,22);
         // Solution text
         sol = new Text(this.solution.stream().map(Object::toString).collect(Collectors.joining(" ")));
         sol.setFont(promptFont);
-        sol.setLayoutX(140); sol.setLayoutY(420);
+        // sol.setLayoutX(140); sol.setLayoutY(420);
 
         // Path Cost Text
         pathCostText = new Text("Path Cost: "+String.valueOf(this.pathCost));
         pathCostText.setFont(promptFont);
         pathCostText.setLayoutX(130); pathCostText.setLayoutY(480);
 
-        this.root.getChildren().addAll(sol, pathCostText);
+        // Text t = new Text("U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L U R D L");
+        
+        // Setting up the scroll pane for displaying solution
+        ScrollPane sp = new ScrollPane();
+        sp.setLayoutX(0); sp.setLayoutY(400);
+        sp.setPrefWidth(400);
+        sp.setPrefHeight(40);
+        sp.setContent(sol);
+
+        this.root.getChildren().addAll(pathCostText, sp);
     }
     
     private void clearSolutionPrompt(){
@@ -148,9 +178,6 @@ public class GameBoard {
     public void setStage(Stage stage) {
         this.stage = stage;
 
-        // Fonts
-        Font promptFont = Font.font("Tw Cen MT",FontWeight.NORMAL,30);
-
         this.initGameBoard();
         this.createMap(this.gameBoard);
 
@@ -158,17 +185,100 @@ public class GameBoard {
         this.initState = new State(this.gameBoard, State.actionNotApplicable, null);
 
         // checking if puzzle is solvable
+        setPromptValues();
+        
+        this.setSolBtn();
+        // Adding a drop down list or choice box for the algorithms
+        ChoiceBox<String> solutionBox = new ChoiceBox<>();
+        solutionBox.getItems().addAll("BFS", "DFS", "A*");
+        solutionBox.setValue("BFS"); solutionBox.setStyle("-fx-font: 20px \"Tw Cen MT\";");
+        solutionBox.setLayoutX(90); solutionBox.setLayoutY(350);
+        
+        // Extracting the values of the choice box
+        this.solutionBtn.setOnAction(e -> getChoice(solutionBox));
 
+        // Adding a select file button
+        Font btnFont = Font.font("Tw Cen MT",FontWeight.NORMAL,16);
+        Button selectBtn = new Button("Select a File");
+        selectBtn.setFont(btnFont); selectBtn.setLayoutX(110); selectBtn.setLayoutY(8);
+        this.addEventHandler(selectBtn);
+
+        // Adding a reset button
+        Button resetBtn = new Button("Reset");
+        resetBtn.setFont(btnFont); resetBtn.setLayoutX(220); resetBtn.setLayoutY(8);
+        this.addEventHandler(resetBtn);
+        
+        // set stage elements here
+        this.root.getChildren().add(this.canvas);
+        this.root.getChildren().add(this.map);
+        this.root.getChildren().addAll(solutionBtn, solutionBox, selectBtn, resetBtn);
+
+        this.stage.setTitle("8-Puzzle Game");
+        this.stage.setScene(this.scene);
+        this.stage.show();
+
+    }
+
+    // method to set new stage based on new input file
+    private void modifyStage(Stage stage){
+        this.stage = stage;
+        this.pieceCells.clear();
+        this.map.getChildren().clear();
+        this.noLongerClickable = false;
+
+        this.createMap(this.gameBoard);
+
+        // initializing the initial node
+        this.initState = new State(this.gameBoard, State.actionNotApplicable, null);
+
+        // checking if puzzle is solvable
+        setPromptValues();
+
+        this.setSolBtn();
+        // Adding a drop down list or choice box for the algorithms
+        ChoiceBox<String> solutionBox = new ChoiceBox<>();
+        solutionBox.getItems().addAll("BFS", "DFS", "A*");
+        solutionBox.setValue("BFS"); solutionBox.setStyle("-fx-font: 20px \"Tw Cen MT\";");
+        solutionBox.setLayoutX(90); solutionBox.setLayoutY(350);
+        
+        // Extracting the values of the choice box
+        this.solutionBtn.setOnAction(e -> getChoice(solutionBox));
+
+        // Adding a select file button
+        Font btnFont = Font.font("Tw Cen MT",FontWeight.NORMAL,16);
+        Button selectBtn = new Button("Select a File");
+        selectBtn.setFont(btnFont); selectBtn.setLayoutX(110); selectBtn.setLayoutY(8);
+        this.addEventHandler(selectBtn);
+        
+        // Adding a reset button
+        Button resetBtn = new Button("Reset");
+        resetBtn.setFont(btnFont); resetBtn.setLayoutX(220); resetBtn.setLayoutY(8);
+        this.addEventHandler(resetBtn);
+        
+        // set stage elements here
+        this.root.getChildren().add(this.canvas);
+        this.root.getChildren().add(this.map);
+        this.root.getChildren().addAll(solutionBtn, solutionBox, selectBtn, resetBtn);
+
+        this.stage.setTitle("8-Puzzle Game");
+        this.stage.setScene(this.scene);
+        this.stage.show();
+    }
+
+    // method to display prompt based on the validity of the input file or gameboard values
+    private void setPromptValues(){
+        // Fonts
+        Font promptFont = Font.font("Tw Cen MT",FontWeight.NORMAL,30);
         if(!checkValidPuzzle()){
             // Message to user about the puzzle
             this.puzzlePrompt = "Invalid puzzle values.";
             Text prompt = new Text(this.puzzlePrompt);
             prompt.setFont(promptFont); prompt.setFill(Color.BLACK); prompt.setStrokeWidth(1.5);
-            prompt.setLayoutX(75); prompt.setLayoutY(60);
+            prompt.setLayoutX(75); prompt.setLayoutY(65);
 
             Text secondPrompt = new Text("Please enter correct values.");
             secondPrompt.setFont(promptFont); secondPrompt.setFill(Color.BLACK); secondPrompt.setStrokeWidth(1.5);
-            secondPrompt.setLayoutX(35); secondPrompt.setLayoutY(85);
+            secondPrompt.setLayoutX(35); secondPrompt.setLayoutY(90);
 
             this.root.getChildren().addAll(prompt, secondPrompt);
         }
@@ -183,11 +293,11 @@ public class GameBoard {
             // Message to user about the puzzle
             Text prompt = new Text(this.puzzlePrompt);
             prompt.setFont(promptFont); prompt.setFill(Color.BLACK); prompt.setStrokeWidth(1.5);
-            prompt.setLayoutX(115); prompt.setLayoutY(60);
+            prompt.setLayoutX(115); prompt.setLayoutY(65);
 
             Text secondPrompt = new Text("No matter how hard you try.");
             secondPrompt.setFont(promptFont); secondPrompt.setFill(Color.BLACK); secondPrompt.setStrokeWidth(1.5);
-            secondPrompt.setLayoutX(35); secondPrompt.setLayoutY(85);
+            secondPrompt.setLayoutX(35); secondPrompt.setLayoutY(90);
 
             this.root.getChildren().addAll(prompt, secondPrompt);
         }
@@ -201,34 +311,15 @@ public class GameBoard {
             // Message to user about the puzzle
             Text prompt = new Text(this.puzzlePrompt);
             prompt.setFont(promptFont); prompt.setFill(Color.BLACK); prompt.setStrokeWidth(1.5);
-            prompt.setLayoutX(45); prompt.setLayoutY(60);
+            prompt.setLayoutX(45); prompt.setLayoutY(65);
             this.root.getChildren().addAll(prompt);
 
         }
-        this.setSolBtn();
-        // Adding a drop down list or choice box for the algorithms
-        ChoiceBox<String> solutionBox = new ChoiceBox<>();
-        solutionBox.getItems().addAll("BFS", "DFS", "A*");
-        solutionBox.setValue("BFS"); solutionBox.setStyle("-fx-font: 20px \"Tw Cen MT\";");
-        solutionBox.setLayoutX(90); solutionBox.setLayoutY(350);
-        
-        // Extracting the values of the choice box
-        this.solutionBtn.setOnAction(e -> getChoice(solutionBox));
-        
-        // set stage elements here
-        this.root.getChildren().add(this.canvas);
-        this.root.getChildren().add(this.map);
-        this.root.getChildren().addAll(solutionBtn, solutionBox);
-
-        this.stage.setTitle("8-Puzzle Game");
-        this.stage.setScene(this.scene);
-        this.stage.show();
-
     }
 
     // method to get the input values from the input file
     private void initGameBoard(){
-     // Getting the input from file
+     // Getting the input from the default file
      InputStream is = Main.class.getResourceAsStream("inputFile.in");
      String line = "";
 
@@ -247,6 +338,39 @@ public class GameBoard {
              }
              count++;
          }
+         // printing the extracted 3 x 3 array
+         printPuzzle(gameBoard);
+         
+     } catch (FileNotFoundException e) {
+         e.printStackTrace();
+     }
+     catch (IOException e) {
+         e.printStackTrace();
+     }
+    }
+
+    // method to modify initial gameboard
+    private void changeGameBoard(String path){
+        String line = "";
+
+     int count = 0;
+
+     try {
+         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+            while((line = br.readLine()) != null){
+                 String[] strArray = line.split(" "); // strArray should hold the values per line (which is three values per row)
+
+                 for(int i = 0; i < strArray.length; i++){
+                     int num = Integer.parseInt(strArray[i]); // type casting the string as integer
+
+                     this.gameBoard[count][i] = num;
+                 }
+                 count++;
+             }
+        } catch (NumberFormatException e) {
+            e.printStackTrace();
+        }
+
          // printing the extracted 3 x 3 array
          printPuzzle(gameBoard);
          
@@ -466,10 +590,10 @@ public class GameBoard {
                         boolean sameState = false;
                         if(Arrays.deepEquals(open.getTileValues(), checkNode.getTileValues())){
                             hasDup = true;
-                            sameState = true;
+                            sameState = true; // if sameState is true, that means a duplicate state is found
                         }
                         if(sameState && checkNode.getGValue() < open.getGValue()){
-                            lessFDup = true;
+                            lessFDup = true;    // if the checkNode has less g value, set lessFDup to true and add checkNode to openList
                         }
                     }
 
@@ -620,7 +744,10 @@ public class GameBoard {
         return inv_count;
     }
 
-    // method to know if puzzle is solvable. This method returns true if 8-puzzle game is solvable
+    // method to know if puzzle is solvable. This method returns true if 8-puzzle game is solvable.
+    // inversion is a case in which for two integers i<j, ith element in the array is larger than jth element.
+    // if the number of inversions is odd, the game is not solvable.
+    // From: https://www.geeksforgeeks.org/check-instance-8-puzzle-solvable
     static boolean isSolvable(int[][] puzzle){
         int linearPuzzle[];
         linearPuzzle = new int[MAX_CELLS];
@@ -699,6 +826,11 @@ public class GameBoard {
         this.trackStates.clear();
     }
 
+    // method to clear the shown states
+    private void clearShownStates(){
+        this.shownStates.clear();
+    }
+
     // method to set or update a value to an index in the gameBoard
     void setGameBoardValue(int row, int col, int val){
         this.gameBoard[row][col] = val;
@@ -757,6 +889,28 @@ public class GameBoard {
         this.algoChoice = choice;
     }
 
+    // method to create solution file
+    private void createSolutionFile(){
+        File absPath = new File("src/solution");
+
+        System.out.println(absPath.getAbsolutePath());
+        final Formatter file;
+
+        try {
+            // creating the actual file
+            file = new Formatter(absPath.getAbsolutePath() + "Puzzle.out");
+            System.out.println("Successful solution file creation");
+
+            // writing the file contents
+            file.format("%s", this.solution);
+            file.close();
+
+        } catch (Exception e) {
+            System.out.println("File error");
+        }
+    }
+
+    // method to return the row index of a number in the solution 2D array
     static int getRowOfSolutionIndex(int val){
         int rowIndex = 0;
         for(int i=0; i<GameBoard.MAP_NUM_ROWS; i++){
@@ -769,6 +923,7 @@ public class GameBoard {
         return rowIndex;
     }
 
+     // method to return the column index of a number in the solution 2D array
     static int getColOfSolutionIndex(int val){
         int colIndex = 0;
         for(int i=0; i<GameBoard.MAP_NUM_ROWS; i++){
@@ -788,6 +943,7 @@ public class GameBoard {
 			public void handle(MouseEvent arg0) {
 				switch(btn.getText()){
 				case "Solution":
+                    removeWinPrompt();
                     if(checkValidPuzzle()){
                         if(algoChoice=="BFS" && isSolvable(gameBoard)){
                             // Using the BFS algorithm
@@ -801,18 +957,19 @@ public class GameBoard {
                             setSolutionPrompt();
 
                             clearTrackedStates();
+                            clearShownStates();
                             setTrackStates(temp);
-                            // for(State s: trackStates){
-                            //     System.out.println("");
-                            //     printPuzzle(s.getTileValues());
-                            // }
+
                             setTransitionButton();
                             removeSolutionBtn();
                             setNoLongerClickable();
                             pieceCells.clear();
                             map.getChildren().clear();
 
-                            System.out.println("Path Cost: "+pathCost);
+                            // creating the solution file
+                            createSolutionFile();
+
+                            System.out.println("Path Cost: "+pathCost+" ("+algoChoice+")");
                         }
                         else if (algoChoice=="DFS" && isSolvable(gameBoard)){
                             // Using the DFS algorithm
@@ -826,18 +983,19 @@ public class GameBoard {
                             setSolutionPrompt();
 
                             clearTrackedStates();
+                            clearShownStates();
                             setTrackStates(temp);
-                            // for(State s: trackStates){
-                            //     System.out.println("");
-                            //     printPuzzle(s.getTileValues());
-                            // }
+
                             setTransitionButton();
                             removeSolutionBtn();
                             setNoLongerClickable();
                             pieceCells.clear();
                             map.getChildren().clear();
 
-                            System.out.println("Path Cost: "+pathCost);
+                            // creating the solution file
+                            createSolutionFile();
+
+                            System.out.println("Path Cost: "+pathCost+" ("+algoChoice+")");
                         }
                         else if(algoChoice=="A*" && isSolvable(gameBoard)){
                             // Queue<State> test = new LinkedList<>();
@@ -865,24 +1023,26 @@ public class GameBoard {
                             setSolutionPrompt();
 
                             clearTrackedStates();
+                            clearShownStates();
                             setTrackStates(temp);
-                            // for(State s: trackStates){
-                            //     System.out.println("");
-                            //     printPuzzle(s.getTileValues());
-                            // }
+
                             setTransitionButton();
                             removeSolutionBtn();
                             setNoLongerClickable();
                             pieceCells.clear();
                             map.getChildren().clear();
 
-                            System.out.println("Path Cost: "+pathCost);
+                            // creating the solution file
+                            createSolutionFile();
+
+                            System.out.println("Path Cost: "+pathCost+" ("+algoChoice+")");
                         }
                     }                    
 					break;
                 case "Next":
-                    
+
                     // clearing the pieceCells and map images first before going to the next state
+                    // next button won't trigger if tracked states and shown states are equal in size
                     if(trackStates.size() != shownStates.size()){
                         pieceCells.clear();
                         map.getChildren().clear();
@@ -892,17 +1052,41 @@ public class GameBoard {
                         if(!shownStates.contains(s)){
                             shownStates.add(s);
                             createMap(s.getTileValues());
-                            // System.out.println("show states");
-                            // printPuzzle(s.getTileValues());
+
                             break;
                         } else{
                             // continue
                         }
                     }
                     }
-                    
-                    
+                    // Tell user that solution sequence is done
+                    else if(trackStates.size() == shownStates.size()){
+                        removeWinPrompt();
+                        setWinPrompt("   End of solution!");
+                    }
                     break;
+
+                case "Select a File":
+                FileChooser fileChooser = new FileChooser();
+                File f = fileChooser.showOpenDialog(null);
+
+                if(f != null){
+                    String path = f.getAbsolutePath();
+                    System.out.println(path);
+                    setFilePath(path);
+                    changeGameBoard(filePath);
+                    clearRoot();
+                    modifyStage(stage);
+                }
+                break;
+
+                case "Reset":
+                    clearRoot();
+                    pieceCells.clear();
+                    map.getChildren().clear();
+                    noLongerClickable = false;
+                    setStage(stage);
+                break;
 				}
 			}
 		});
@@ -915,4 +1099,6 @@ public class GameBoard {
  *          isSolvable method: https://www.geeksforgeeks.org/check-instance-8-puzzle-solvable
  *          ArrayList of Characters to String: https://stackoverflow.com/a/23183963/15416780
  *          Finding minimum value (for F): https://stackoverflow.com/a/46355428/15416780
+ *          File Chooser tutorial: https://www.youtube.com/watch?v=A6sA9KItwpY
+ *          Creating files: https://www.youtube.com/watch?v=G0DfmD0KKyc
  */

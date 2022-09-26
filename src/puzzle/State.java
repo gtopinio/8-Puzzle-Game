@@ -87,6 +87,7 @@ public class State {
         }
     }
 
+    // method to set G value
     private void setGValue(State node){
         if(node.getAction() == State.actionNotApplicable){
             return;
@@ -97,6 +98,7 @@ public class State {
         }
     }
 
+    // method to set H value
     private void setHValue(){
         Integer totalDistance = 0;
         Integer distance = 0;
@@ -143,6 +145,7 @@ public class State {
         this.h = totalDistance;
     }
 
+    // method to set F value
     private void setFValue(){
         this.f = this.g + this.h;
     }
